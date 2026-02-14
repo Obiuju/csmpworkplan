@@ -1,5 +1,4 @@
-const { connectToDatabase } = require('./db');
-const { ObjectId } = require('mongodb');
+const { connectToDatabase } = require('./db.cjs');
 
 exports.handler = async (event, context) => {
   context.callbackWaitsForEmptyEventLoop = false;
@@ -10,28 +9,16 @@ exports.handler = async (event, context) => {
     'Content-Type': 'application/json'
   };
 
-  if (event.httpMethod !== 'DELETE') {
-    return { statusCode: 405, headers, body: 'Method Not Allowed' };
-  }
-
   try {
     const db = await connectToDatabase();
     const collection = db.collection('activities');
     
-    const { id } = JSON.parse(event.body);
-    
-    const result = await collection.deleteOne({ 
-      _id: new ObjectId(id) 
-    });
+    const activities = await collection.find({}).sort({ createdAt: -1 }).toArray();
     
     return {
       statusCode: 200,
       headers,
-      body: JSON.stringify({ 
-        success: true, 
-        deleted: result.deletedCount,
-        message: 'Activity deleted successfully'
-      })
+      body: JSON.stringify(activities)
     };
   } catch (error) {
     console.error('Error:', error);

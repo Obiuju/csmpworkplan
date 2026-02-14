@@ -1,5 +1,4 @@
-const { connectToDatabase } = require('./db');
-const { ObjectId } = require('mongodb');
+const { connectToDatabase } = require('./db.cjs');
 
 exports.handler = async (event, context) => {
   context.callbackWaitsForEmptyEventLoop = false;
@@ -10,7 +9,7 @@ exports.handler = async (event, context) => {
     'Content-Type': 'application/json'
   };
 
-  if (event.httpMethod !== 'PUT') {
+  if (event.httpMethod !== 'POST') {
     return { statusCode: 405, headers, body: 'Method Not Allowed' };
   }
 
@@ -18,25 +17,20 @@ exports.handler = async (event, context) => {
     const db = await connectToDatabase();
     const collection = db.collection('activities');
     
-    const { id, ...updateData } = JSON.parse(event.body);
-    
-    const result = await collection.updateOne(
-      { _id: new ObjectId(id) },
-      { 
-        $set: { 
-          ...updateData, 
-          updatedAt: new Date().toISOString() 
-        } 
-      }
-    );
+    const activityData = JSON.parse(event.body);
+    const result = await collection.insertOne({
+      ...activityData,
+      createdAt: activityData.createdAt || new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    });
     
     return {
-      statusCode: 200,
+      statusCode: 201,
       headers,
       body: JSON.stringify({ 
         success: true, 
-        modified: result.modifiedCount,
-        message: 'Activity updated successfully'
+        id: result.insertedId,
+        message: 'Activity created successfully'
       })
     };
   } catch (error) {

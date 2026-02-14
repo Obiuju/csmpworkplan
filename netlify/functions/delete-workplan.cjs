@@ -1,4 +1,5 @@
-const { connectToDatabase } = require('./db');
+const { connectToDatabase } = require('./db.cjs');
+const { ObjectId } = require('mongodb');
 
 exports.handler = async (event, context) => {
   context.callbackWaitsForEmptyEventLoop = false;
@@ -9,7 +10,7 @@ exports.handler = async (event, context) => {
     'Content-Type': 'application/json'
   };
 
-  if (event.httpMethod !== 'POST') {
+  if (event.httpMethod !== 'DELETE') {
     return { statusCode: 405, headers, body: 'Method Not Allowed' };
   }
 
@@ -17,20 +18,19 @@ exports.handler = async (event, context) => {
     const db = await connectToDatabase();
     const collection = db.collection('activities');
     
-    const activityData = JSON.parse(event.body);
-    const result = await collection.insertOne({
-      ...activityData,
-      createdAt: activityData.createdAt || new Date().toISOString(),
-      updatedAt: new Date().toISOString()
+    const { id } = JSON.parse(event.body);
+    
+    const result = await collection.deleteOne({ 
+      _id: new ObjectId(id) 
     });
     
     return {
-      statusCode: 201,
+      statusCode: 200,
       headers,
       body: JSON.stringify({ 
         success: true, 
-        id: result.insertedId,
-        message: 'Activity created successfully'
+        deleted: result.deletedCount,
+        message: 'Activity deleted successfully'
       })
     };
   } catch (error) {
