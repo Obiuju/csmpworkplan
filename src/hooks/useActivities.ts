@@ -1,69 +1,140 @@
 import { useState, useEffect } from 'react';
 import type { Activity } from '@/lib/types';
+import { api } from '@/lib/api';
 
 const STORAGE_KEY = 'activities';
 
 export function useActivities() {
   const [activities, setActivities] = useState<Activity[]>([]);
+  const [loading, setLoading] = useState(true);
 
+  // Load activities from MongoDB on mount
   useEffect(() => {
-    const stored = localStorage.getItem(STORAGE_KEY);
-    if (stored) {
-      setActivities(JSON.parse(stored));
-    }
+    loadActivities();
   }, []);
+
+  const loadActivities = async () => {
+    try {
+      setLoading(true);
+      const data = await api.getWorkplans();
+      setActivities(data);
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+    } catch (err) {
+      console.error('Error loading activities:', err);
+      const stored = localStorage.getItem(STORAGE_KEY);
+      if (stored) {
+        setActivities(JSON.parse(stored));
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const saveActivities = (newActivities: Activity[]) => {
     setActivities(newActivities);
     localStorage.setItem(STORAGE_KEY, JSON.stringify(newActivities));
   };
 
-  const addActivity = (activity: Omit<Activity, 'id' | 'createdAt' | 'comments'>) => {
+  const addActivity = async (activity: Omit<Activity, 'id' | 'createdAt' | 'comments'>) => {
     const newActivity: Activity = {
       ...activity,
       id: Date.now(),
       createdAt: new Date().toISOString(),
       comments: []
     };
-    saveActivities([...activities, newActivity]);
+    
+    try {
+      await api.createWorkplan(newActivity);
+      await loadActivities();
+    } catch (err) {
+      console.error('Error adding activity:', err);
+      saveActivities([...activities, newActivity]);
+    }
   };
 
-  const updateActivity = (id: number, updates: Partial<Activity>) => {
-    const updated = activities.map(a => 
-      a.id === id ? { ...a, ...updates, lastUpdated: new Date().toISOString() } : a
-    );
-    saveActivities(updated);
+  const updateActivity = async (id: number, updates: Partial<Activity>) => {
+    const activity = activities.find(a => a.id === id);
+    if (!activity) return;
+
+    const updatedActivity = { 
+      ...activity, 
+      ...updates, 
+      lastUpdated: new Date().toISOString() 
+    };
+
+    try {
+      await api.updateWorkplan((activity as any)._id || String(id), updatedActivity);
+      await loadActivities();
+    } catch (err) {
+      console.error('Error updating activity:', err);
+      const updated = activities.map(a => a.id === id ? updatedActivity : a);
+      saveActivities(updated);
+    }
   };
 
-  const deleteActivity = (id: number) => {
-    saveActivities(activities.filter(a => a.id !== id));
+  const deleteActivity = async (id: number) => {
+    const activity = activities.find(a => a.id === id);
+    if (!activity) return;
+
+    try {
+      await api.deleteWorkplan((activity as any)._id || String(id));
+      await loadActivities();
+    } catch (err) {
+      console.error('Error deleting activity:', err);
+      saveActivities(activities.filter(a => a.id !== id));
+    }
   };
 
-  const addComment = (activityId: number, text: string, author: string) => {
-    const updated = activities.map(a => {
-      if (a.id === activityId) {
-        return {
-          ...a,
-          comments: [...a.comments, {
-            id: Date.now(),
-            text,
-            author,
-            timestamp: new Date().toISOString()
-          }]
-        };
+  const addComment = async (activityId: number, text: string, author: string) => {
+    const activity = activities.find(a => a.id === activityId);
+    if (!activity) return;
+
+    const updatedActivity = {
+      ...activity,
+      comments: [...activity.comments, {
+        id: Date.now(),
+        text,
+        author,
+        timestamp: new Date().toISOString()
+      }]
+    };
+
+    try {
+      await api.updateWorkplan((activity as any)._id || String(activityId), updatedActivity);
+      await loadActivities();
+    } catch (err) {
+      console.error('Error adding comment:', err);
+      const updated = activities.map(a => a.id === activityId ? updatedActivity : a);
+      saveActivities(updated);
+    }
+  };
+
+  const importActivities = async (newActivities: Activity[]) => {
+    try {
+      for (const activity of newActivities) {
+        await api.createWorkplan(activity);
       }
-      return a;
-    });
-    saveActivities(updated);
+      await loadActivities();
+    } catch (err) {
+      console.error('Error importing activities:', err);
+      saveActivities([...activities, ...newActivities]);
+    }
   };
 
-  const importActivities = (newActivities: Activity[]) => {
-    saveActivities([...activities, ...newActivities]);
-  };
-
-  const resetAll = () => {
-    localStorage.clear();
-    setActivities([]);
+  const resetAll = async () => {
+    try {
+      for (const activity of activities) {
+        if ((activity as any)._id) {
+          await api.deleteWorkplan((activity as any)._id);
+        }
+      }
+      localStorage.clear();
+      setActivities([]);
+    } catch (err) {
+      console.error('Error resetting:', err);
+      localStorage.clear();
+      setActivities([]);
+    }
   };
 
   return {
