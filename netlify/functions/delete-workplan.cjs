@@ -20,9 +20,18 @@ exports.handler = async (event, context) => {
     
     const { id } = JSON.parse(event.body);
     
-    const result = await collection.deleteOne({ 
-      _id: new ObjectId(id) 
-    });
+    // Build query - try both _id (MongoDB) and id (numeric)
+    let query;
+    
+    // Check if id is a valid ObjectId format (24 hex characters)
+    if (id && id.length === 24 && /^[0-9a-fA-F]{24}$/.test(id)) {
+      query = { _id: new ObjectId(id) };
+    } else {
+      // Use numeric id field
+      query = { id: parseInt(id) };
+    }
+    
+    const result = await collection.deleteOne(query);
     
     return {
       statusCode: 200,
