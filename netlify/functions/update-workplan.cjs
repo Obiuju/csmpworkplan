@@ -18,7 +18,10 @@ exports.handler = async (event, context) => {
     const db = await connectToDatabase();
     const collection = db.collection('activities');
     
-    const { id, ...updateData } = JSON.parse(event.body);
+    const { id, _id, ...updateData } = JSON.parse(event.body);
+    
+    // Remove _id from updateData if it somehow got included
+    delete updateData._id;
     
     // Build query - try both _id (MongoDB) and id (numeric)
     let query;
@@ -26,6 +29,8 @@ exports.handler = async (event, context) => {
     // Check if id is a valid ObjectId format (24 hex characters)
     if (id && id.length === 24 && /^[0-9a-fA-F]{24}$/.test(id)) {
       query = { _id: new ObjectId(id) };
+    } else if (_id && _id.length === 24 && /^[0-9a-fA-F]{24}$/.test(_id)) {
+      query = { _id: new ObjectId(_id) };
     } else {
       // Use numeric id field
       query = { id: parseInt(id) };
